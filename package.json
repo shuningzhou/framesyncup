@@ -1,0 +1,17 @@
+{
+    "name": "com.socketweaver.framesync",
+    "displayName": "SocketWeaver FrameSync",
+    "version": "0.0.1",
+    "unity": "2018.4",
+    "description": "Networking Framework",
+    "keywords": [
+        "Networking"
+    ],
+    "category": "Networking",
+    "dependencies": {
+    },
+    "repository": {
+        "type": "git",
+        "url": "https://github.com/shuningzhou/framesyncup.git"
+    }
+}
