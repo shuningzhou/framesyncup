@@ -1,0 +1,15 @@
+{
+    "name": "com.socketweaver.framesync.runtime",
+    "references": [
+        "GUID:3df29359b5733f14da26bf1a2529a720"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}
