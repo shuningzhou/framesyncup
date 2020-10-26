@@ -3,7 +3,7 @@ using System.Collections.Generic;
 
 namespace SWNetwork.FrameSync
 {
-    interface IFrameSyncData
+    public interface IFrameSyncData
     {
         void FrameSyncDataInitialize(FrameSyncGame game);
         void Export(SWBytes buffer);

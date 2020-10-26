@@ -1,6 +1,4 @@
-﻿using SWNetwork.Core;
-
-namespace SWNetwork.FrameSync
+﻿namespace SWNetwork.FrameSync
 {
     public interface IFrameSyncDebugger
     {

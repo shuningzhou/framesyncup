@@ -1,7 +1,8 @@
 {
     "name": "com.socketweaver.framesync.runtime",
     "references": [
-        "GUID:3df29359b5733f14da26bf1a2529a720"
+        "GUID:3df29359b5733f14da26bf1a2529a720",
+        "GUID:71c8e94c868e7764889be8883040f663"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],
