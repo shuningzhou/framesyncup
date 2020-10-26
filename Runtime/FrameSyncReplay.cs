@@ -7,7 +7,7 @@ using System.Threading.Tasks;
 
 namespace SWNetwork.FrameSync
 {
-    public class SWFrameSyncReplay
+    public class FrameSyncReplay
     {
  
     }

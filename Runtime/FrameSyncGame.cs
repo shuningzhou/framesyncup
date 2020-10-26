@@ -86,11 +86,10 @@ namespace SWNetwork.FrameSync
         {
             if (_playerDataProvider != null)
             {
-                //_userData = _playerDataProvider.GetUserData<T>();
+                _userData = _playerDataProvider.GetUserData<T>();
 
-                ////todo
-                ////_userData should be create in the matchmaking stage
-                ///
+                //todo
+                //_userData should be create in the matchmaking stage
                 //GameSettings gameSettings = new GameSettings();
                 //gameSettings.player1ID = 1;
                 //gameSettings.player2ID = 2;

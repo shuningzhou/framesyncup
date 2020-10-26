@@ -323,7 +323,7 @@ namespace SWNetwork.FrameSync
         }
 
         public abstract void OnFrameSyncEngineCreated(FrameSyncEngine engine);
-        public abstract void OnFrameSyncGameCreated(FrameSyncGame game, SWFrameSyncReplay replay);
+        public abstract void OnFrameSyncGameCreated(FrameSyncGame game, FrameSyncReplay replay);
 
         public abstract void OnCollectLocalPlayerInputs(FrameSyncInput input, FrameSyncGame game);
 
