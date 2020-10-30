@@ -89,11 +89,6 @@ namespace SWNetwork.FrameSync
             OnFrameSyncGameWillStart();
 
             StartGame();
-
-            if (_debugger != null)
-            {
-                _debugger.Initialized(this);
-            }
         }
 
         void OnDestroy()
@@ -103,6 +98,11 @@ namespace SWNetwork.FrameSync
 
         public virtual void Update()
         {
+            if (_debugger != null)
+            {
+                _debugger.Initialized(this);
+            }
+
             if (_debuggerInterupt)
             {
                 return;
