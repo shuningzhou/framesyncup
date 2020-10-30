@@ -9,7 +9,13 @@ namespace SWNetwork.FrameSync
 {
     public abstract class FrameSyncAgent : MonoBehaviour
     {
-        public static IFrameSyncDebugger _debugger;
+        static IFrameSyncDebugger _debugger;
+
+        static internal void SetDebugger(IFrameSyncDebugger debugger)
+        {
+            _debugger = debugger;
+        }
+
         FrameSyncEngine _engine;
         FrameSyncGame _game;
 
@@ -98,9 +104,9 @@ namespace SWNetwork.FrameSync
 
         public virtual void Update()
         {
-            if (_debugger != null)
+            if (_debugger != null && !_debugger.Initialized())
             {
-                _debugger.Initialized(this);
+                _debugger.Initialize(this);
             }
 
             if (_debuggerInterupt)

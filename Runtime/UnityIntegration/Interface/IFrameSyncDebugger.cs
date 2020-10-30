@@ -2,7 +2,10 @@
 {
     public interface IFrameSyncDebugger
     {
-        void Initialized(FrameSyncAgent agent);
+        void Initialize(FrameSyncAgent agent);
+
+        bool Initialized();
+
         void WillStep(FrameSyncEngine engine, FrameSyncGame game);
         void DidStep(FrameSyncEngine engine, FrameSyncGame game);
     }

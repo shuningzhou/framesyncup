@@ -32,10 +32,11 @@ public class FrameSyncDebugger : MonoBehaviour, IFrameSyncDebugger
 
     string _host = "127.0.0.1";
     int _port = 14321;
+    bool _initialzied = false;
 
     void Awake()
     {
-        FrameSyncAgent._debugger = this;
+        FrameSyncAgent.SetDebugger(this);
         _tcpTempBytes = new SWBytes(16 * 1024);
     }
 
@@ -48,7 +49,7 @@ public class FrameSyncDebugger : MonoBehaviour, IFrameSyncDebugger
         _tcpConnection = null;
     }
 
-    public void Initialized(FrameSyncAgent agent)
+    public void Initialize(FrameSyncAgent agent)
     {
         _tcpConnection = new SWTCPConnection();
         _tcpConnection.OnConnectionEstablished += _tcpConnection_OnConnectionEstablished;
@@ -56,6 +57,12 @@ public class FrameSyncDebugger : MonoBehaviour, IFrameSyncDebugger
         SWConsole.Verbose("FrameSyncDebugger Initialized");
         _agent = agent;
         _tcpConnection.Connect(_host, _port);
+        _initialzied = true;
+    }
+
+    public bool Initialized()
+    {
+        return _initialzied;
     }
 
     private void _tcpConnection_OnConnectionEstablished(bool established)
