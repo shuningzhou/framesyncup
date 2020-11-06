@@ -39,7 +39,7 @@ namespace SWNetwork.FrameSync
 
         public override void Run()
         {
-            _handler.HandleInputFrameInBackground(inputFrameData, playerLastInputFrameOnServer, roomStep, predictionFrameNumber, correctFrameNumber);
+            _handler.HandleInputFrameInBackground(inputFrameData, playerLastInputFrameOnServer, roomStep, 1);
         }
     }
 
@@ -89,7 +89,6 @@ namespace SWNetwork.FrameSync
                         {
                             delta = new InputFrameDelta();
                             delta.frameNumber = 0; //playerFrameNumber
-                            delta.version = 0;
                         }
 
                         delta.Export(_largeData);
@@ -126,7 +125,6 @@ namespace SWNetwork.FrameSync
 
                     InputFrameDelta delta = new InputFrameDelta();
                     delta.frameNumber = playerFrameNumber;
-                    delta.predictedServerFrameNumber = correctPredictedFrameNumber;
                     inputFrameDeltas.PopByteBuffer(delta.bytes, 0, length);
                     _receivedInputFrameDeltas.Enqueue(delta);
                     _lastReceivedPlayerFrameNumber = playerFrameNumber;
@@ -201,11 +199,10 @@ namespace SWNetwork.FrameSync
                 SWConsole.Crit($"MockIO: DoTick playerFrameCount={_receivedInputFrameDeltas.Count}");
                 InputFrameDelta delta = _receivedInputFrameDeltas.Peek();
 
-                if (delta.predictedServerFrameNumber == 0 || delta.predictedServerFrameNumber <= _frameNumber)
+                if (true)
                 {
                     delta = _receivedInputFrameDeltas.Dequeue();
                     //SWConsole.Crit($"MockIO: DoTick playerFrameCount 1 ={_receivedInputFrameDeltas.Count}");
-                    delta.version = 0;
                     _inputFrameDeltas[_frameNumber] = delta;
 
                     _data.Reset();
@@ -222,7 +219,6 @@ namespace SWNetwork.FrameSync
                     operation.predictionFrameNumber = _predictedFrameNumber;
                     operation.correctFrameNumber = _correctFrameNumber;
                     operation.roomStep = _frameNumber;
-                    operation.version = delta.version;
                     operation.sealedFrameNumber = _sealedFrameNumber;
                     _operationQueue.AddOperation(operation);
                     return;
@@ -262,7 +258,6 @@ namespace SWNetwork.FrameSync
                 _lastPredictedFrameNumber = _frameNumber;
                 InputFrameDelta delta = new InputFrameDelta();
                 delta.frameNumber = 0; //playerFrameNumber
-                delta.version = 0;
                 _inputFrameDeltas[_frameNumber] = delta;
 
                 _data.Reset();
@@ -275,7 +270,6 @@ namespace SWNetwork.FrameSync
                 operation.predictionFrameNumber = _predictedFrameNumber;
                 operation.correctFrameNumber = _correctFrameNumber;
                 operation.roomStep = _frameNumber;
-                operation.version = delta.version;
                 operation.sealedFrameNumber = _sealedFrameNumber;
                 _operationQueue.AddOperation(operation);
 

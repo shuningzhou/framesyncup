@@ -27,6 +27,8 @@ namespace SWNetwork.FrameSync
         public Fix64 _maxFloat;
         public Fix64 _precisionFloat;
         public Fix64 _defaultValueFloat;
+        public Func<Fix64, Fix64> _predictionModifier;
+
 
         public static FrameSyncInputSetting NullSetting
         {
@@ -99,6 +101,11 @@ namespace SWNetwork.FrameSync
 
         public static FrameSyncInputSetting CompressedFloatInput(string name, Fix64 min, Fix64 max, Fix64 precision, Fix64 defaultValue)
         {
+            return CompressedFloatInput(name, min, max, precision, defaultValue, null);
+        }
+
+        public static FrameSyncInputSetting CompressedFloatInput(string name, Fix64 min, Fix64 max, Fix64 precision, Fix64 defaultValue, Func<Fix64, Fix64> predictionModifier)
+        {
             if (min >= max)
             {
                 SWConsole.Error("");
@@ -113,6 +120,7 @@ namespace SWNetwork.FrameSync
             setting._maxFloat = max;
             setting._precisionFloat = precision;
             setting._defaultValueFloat = defaultValue;
+            setting._predictionModifier = predictionModifier;
 
             return setting;
         }
@@ -140,7 +148,7 @@ namespace SWNetwork.FrameSync
                 case FrameSyncInputType.CompressedInt:
                     return new CompressedIntInputDataController(bitOffset, _minInt, _maxInt, _bitSize, _defaultValueInt);
                 case FrameSyncInputType.CompressedFloat:
-                    return new CompressedFloatInputDataController(bitOffset, _minFloat, _maxFloat, _precisionFloat, _bitSize, _defaultValueFloat);
+                    return new CompressedFloatInputDataController(bitOffset, _minFloat, _maxFloat, _precisionFloat, _bitSize, _defaultValueFloat, _predictionModifier);
                 case FrameSyncInputType.Trigger:
                     return new TriggerInputDataController(bitOffset);
                 default:

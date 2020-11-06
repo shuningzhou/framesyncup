@@ -89,6 +89,22 @@ namespace SWNetwork.FrameSync
 
         }
 
+        // for user prediction modifier
+        internal void ApplyPredictionModifier(SWBytes nextFrameBytes)
+        {
+            nextFrameBytes.ReadByteArray(_inputOffset, _byteArray);
+            _bitArray = new BitArray(_byteArray);
+
+            foreach (FrameSyncInputDataController controller in _inputDataControllers)
+            {
+                controller.ApplyPredictionModifier(_bitArray);
+            }
+
+            _bitArray.CopyTo(_byteArray, 0);
+
+            nextFrameBytes.WriteByteArray(_inputOffset, _byteArray);
+        }
+
         internal Fix64 GetFloat(int index)
         {
             return _inputDataControllers[index].GetFloatValue(_bitArray);

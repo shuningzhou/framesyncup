@@ -55,7 +55,8 @@ namespace SWNetwork.FrameSync
 
     public static class FrameSyncConstant
     {
-        public const int DEFAULT_FRAMES_CHUNK_SIZE = 256;
+        public const int DEFAULT_FRAMES_CHUNK_SIZE = 128;
+        public const int DEFAULT_SYSTEM_DATA_CHUNK_SIZE = 32;
         public const int INPUT_FRAME_SIZE = 28;
         public const int DATA_FRAME_SIZE = 1024 * 16;
 
@@ -69,15 +70,22 @@ namespace SWNetwork.FrameSync
         public const int LOCAL_INPUT_FRAME_RESEND_COUNT = 3;
 
         //frameSyncTime
-        public const float EXPECTED_SERVER_PLAYER_FRAME_COUNT_MAX = 1.1f;
-        public const float EXPECTED_LOCAL_SERVER_FRAME_COUNT_MAX = 2.1f;
-        public const float EXPECTED_SERVER_PLAYER_FRAME_COUNT_MIN = 0.1f;
-        public const float EXPECTED_LOCAL_SERVER_FRAME_COUNT_MIN = 0.9f;
+        public const float OPTIMIZED_LOCAL_SERVER_FRAME_COUNT = 3;
+        public const float OPTIMIZED_SERVER_PLAYER_FRAME_COUNT = 0;
+
+        public const float OPTIMIZED_LOCAL_PREDICTION_FRAME_COUNT = 2;
+        public const float OPTIMIZED_SERVER_PREDICTION_PLAYER_FRAME_COUNT = 2;
+
+        //public const float EXPECTED_SERVER_PLAYER_FRAME_COUNT_MIN = 0.1f;
+
+        //public const float EXPECTED_LOCAL_SERVER_FRAME_COUNT_MAX = 2.9f;
+        //public const float EXPECTED_LOCAL_SERVER_FRAME_COUNT_MIN = 1.6f;
+
         public const float DYNAMIC_ADJUST_INTERVAL = 0.2f;
-        public const float DYNAMIC_ADJUST_STEP = 0.95f;
+        public const float DYNAMIC_ADJUST_STEP = 0.98f;
         public const float DYNAMIC_ADJUST_SMALL_STEP = 0.99f;
-        public const int DYNAMIC_AVERAGE_COUNT = 3;
-        public const float DYNAMIC_ADJUST_MAX = 0.5f;
+        public const int DYNAMIC_AVERAGE_COUNT = 5;
+        public const float DYNAMIC_ADJUST_MAX = 0.08f;
 
         //save replay
         public const int SAVE_REPLAY_BUFFER_SIZE_30_KB = 1024 * 30;
@@ -90,6 +98,12 @@ namespace SWNetwork.FrameSync
 
         //debug server command
         public const byte DEBUG_SERVER_PLAYER_FRAME = 1;
+
+        //fixed tickrate
+        public const int FIXED_TICKRATE_LOOP_STEP_COUNT = 30;
+        public const float FIXED_TICKRATE_DEFAULT_STEP_INTERVAL = 0.03333f;
+        public const float FIXED_TICKRATE_LOOP_INTERVAL = 1.0f;
+        public const float FIXED_TICKRATE_ESITIMATED_STEP_TIME = 0.01666f;
 
     }
 }

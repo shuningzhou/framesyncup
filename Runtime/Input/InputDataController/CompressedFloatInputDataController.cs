@@ -1,6 +1,7 @@
 ﻿using SWNetwork.Core;
 using System.Collections;
 using Parallel;
+using System;
 
 namespace SWNetwork.FrameSync
 {
@@ -13,8 +14,10 @@ namespace SWNetwork.FrameSync
         byte _size;
         int _nvalues;
         Fix64 _defaultValue = Fix64.zero;
+        Func<Fix64, Fix64> _predictionModifier;
 
-        internal CompressedFloatInputDataController(byte bitOffset, Fix64 min, Fix64 max, Fix64 precision, byte size, Fix64 defaultValue) : base(bitOffset)
+
+        internal CompressedFloatInputDataController(byte bitOffset, Fix64 min, Fix64 max, Fix64 precision, byte size, Fix64 defaultValue, Func<Fix64, Fix64> predictionModifer) : base(bitOffset)
         {
             _min = min;
             _max = max;
@@ -22,6 +25,7 @@ namespace SWNetwork.FrameSync
             _nvalues = (int)((_max - _min) / precision) + 1;
             _size = size;
             _defaultValue = defaultValue;
+            _predictionModifier = predictionModifer;
             if (_defaultValue < _min || _defaultValue > _max)
             {
                 SWConsole.Error($"Default value({_defaultValue}) should be between {_min} and {_max}. Using {_min} as the default value.");
@@ -29,7 +33,17 @@ namespace SWNetwork.FrameSync
             }
         }
 
+        public void SetPredictionModifier(Func<Fix64,Fix64> modifier)
+        {
+            _predictionModifier = modifier;
+        }
+
         public override void Export(BitArray bitArray)
+        {
+            Export(bitArray, _userUpdatedValue);
+        }
+
+        void Export(BitArray bitArray, Fix64 value)
         {
             int delta;
 
@@ -43,15 +57,15 @@ namespace SWNetwork.FrameSync
             //if user value less than default value
             //the delta = (user value / precision) + number of values
             //for example, for user value -1.0, delta = (-1.0)/(0.5) + 5 = -2 + 5 =3
-            if (_userUpdatedValue < _defaultValue)
+            if (value < _defaultValue)
             {
-                Fix64 v = _userUpdatedValue / _precision;
+                Fix64 v = value / _precision;
                 int intV = (int)v;
                 delta = intV + _nvalues;
             }
             else
             {
-                delta = (int)((_userUpdatedValue - _defaultValue) / _precision);
+                delta = (int)((value - _defaultValue) / _precision);
             }
 
             for (int i = 0; i < _size; i++)
@@ -113,6 +127,28 @@ namespace SWNetwork.FrameSync
                 _userUpdatedValue = _max;
             }
         }
+
+        public override void ApplyPredictionModifier(BitArray bitArray)
+        {
+            Fix64 oldValue = GetFloatValue(bitArray);
+
+            if(_predictionModifier != null)
+            {
+                Fix64 newValue = _predictionModifier(oldValue);
+
+                if (newValue < _min)
+                {
+                    newValue = _min;
+                }
+                else if (newValue > _max)
+                {
+                    newValue = _max;
+                }
+
+                Export(bitArray, newValue);
+            }
+        }
+
 
         //Debug
         public override string DisplayValue(BitArray bitArray)

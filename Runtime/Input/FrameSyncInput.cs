@@ -35,7 +35,23 @@ namespace SWNetwork.FrameSync
             }
         }
 
-        public void ExportInput(SWBytes bytes, bool offline)
+        // predition
+        internal void ApplyPredictionModifier(SWBytes bytes)
+        {
+            foreach (KeyValuePair<byte, FrameSyncPlayer> pair in _playerDictionary)
+            { 
+                FrameSyncPlayer player = pair.Value;
+                if (player.Type == FrameSyncPlayerType.Local || player.Type == FrameSyncPlayerType.LocalBot)
+                {
+                    // only apply modifier to remote player's input
+                    continue;
+                }
+
+                player.ApplyPredictionModifier(bytes);
+            }
+        }
+
+        public void ExportInput(SWBytes bytes)
         {
             byte playerCount = 0;
             foreach (KeyValuePair<byte, FrameSyncPlayer> pair in _playerDictionary)
@@ -47,13 +63,6 @@ namespace SWNetwork.FrameSync
                     pair.Value.ExportInput(bytes);
                 }
             }
-
-            if(!offline)
-            {   
-                //offline mode directyly written to input delta buffer
-                //add playerCount so server 
-                bytes.PushFront(playerCount);
-            } 
         }
 
         //PLAYER

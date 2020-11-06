@@ -152,7 +152,7 @@ namespace SWNetwork.FrameSync
             }
 
             Time.fixedDeltaTime = (float)_tickInterval;
-            FrameSyncTime.Initialize(_tickInterval, _game.clientSidePrediction, 0.25f, FrameSyncConstant.DYNAMIC_AVERAGE_COUNT);
+            FrameSyncTime.Initialize(_tickInterval, _game.clientSidePrediction, FrameSyncConstant.DYNAMIC_ADJUST_INTERVAL, FrameSyncConstant.DYNAMIC_AVERAGE_COUNT);
             _cachedFixedUpdateTime = Time.fixedDeltaTime;
 
 
@@ -214,7 +214,7 @@ namespace SWNetwork.FrameSync
 
         void SaveInput(SWBytes data, int start, int end)
         {
-            SWConsole.Warn($"SaveItems start={start}, end={end}");
+            SWConsole.Info($"SaveItems start={start}, end={end}");
             
             if(end > _lastEndIndex)
             {

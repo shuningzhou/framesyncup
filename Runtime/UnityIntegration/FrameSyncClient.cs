@@ -6,6 +6,24 @@ using System;
 
 namespace SWNetwork.FrameSync
 {
+    public class UnityLogger : IDebugLogger
+    {
+        public void Log(string msg)
+        {
+            Debug.Log(msg);
+        }
+
+        public void LogError(string msg)
+        {
+            Debug.LogError(msg);
+        }
+
+        public void LogWarning(string msg)
+        {
+            Debug.LogWarning(msg);
+        }
+    }
+
     public class FrameSyncClient : IFrameSyncPlayerDataProvider
     {
         public static FrameSyncClient Instance = null;
@@ -56,6 +74,8 @@ namespace SWNetwork.FrameSync
             _debugPlayerCount = playerCount;
             Instance = new FrameSyncClient(playerUID);
             UnityThread.initUnityThread();
+            SWConsole.SetLogger(new UnityLogger());
+            SWConsole.level = ConsoleLogLevel.error;
 
             if (UnityEngine.Application.isPlaying)
             {
@@ -105,17 +125,17 @@ namespace SWNetwork.FrameSync
             }
         }
 
-        public static int ServerPing
-        {
-            get
-            {
-                if(Instance != null && Instance._client != null)
-                {
-                    return Instance._client.Ping;
-                }
-                return 0;
-            }
-        }
+        //public static int ServerPing
+        //{
+        //    get
+        //    {
+        //        if(Instance != null && Instance._client != null)
+        //        {
+        //            return Instance._client.Ping();
+        //        }
+        //        return 0;
+        //    }
+        //}
 
         public static void Connect(Action<bool> completionHandler)
         {

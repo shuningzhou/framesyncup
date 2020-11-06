@@ -21,6 +21,12 @@ namespace SWNetwork.FrameSync
             FrameNumber = frameNumber;
         }
 
+        internal void Copy(InputFrame other)
+        {
+            other.FrameNumber = FrameNumber;
+            SWBytes.CopyFull(bytes, other.bytes);
+        }
+
         internal void ResetBytes()
         {
             bytes.Reset();

@@ -3,10 +3,15 @@ using SWNetwork.Core;
 using SWNetwork.Core.DataStructure;
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using UnityEngine;
 
 namespace SWNetwork.FrameSync
 {
     public delegate void WillSimulate();
+    public delegate IRestorable WillExport(int frameNumber);
+    public delegate void WillRestore(int frameNumber, IRestorable restorable);
+
     public class FrameSyncEngine : IFrameSyncHandler, IFrameSyncInputProvider
     {
         string _debugName = "[FrameSyncEngine]";
@@ -20,6 +25,7 @@ namespace SWNetwork.FrameSync
         StaticFrameSyncBehaviourManager _staticFrameSyncBehaviourManager = null;
 
         public WillSimulate OnEngineWillSimulateEvent;
+        public WillExport OnEngineWillExportEvent;
 
         SWFrameSyncSystem[] _systems;
 
@@ -32,6 +38,8 @@ namespace SWNetwork.FrameSync
             _systems = new SWFrameSyncSystem[2];
             _systems[0] = _staticFrameSyncBehaviourManager;
             _systems[1] = _dynamicFrameSyncBehaviourManager;
+            _lastInputFrameForPrediction = new InputFrame();
+            _inputFrameForPrediction = new InputFrame();
         }
 
         public void SetFrameSyncInputConfig(FrameSyncInputConfig inputConfig)
@@ -96,31 +104,57 @@ namespace SWNetwork.FrameSync
         }
 
         float _inputSampleTimer = 0;
+        int _localCounter = 0;
+        private Stopwatch _stopwatch = new Stopwatch();
+        private Stopwatch _stopwatch1 = new Stopwatch();
         public bool OnUpdate(float deltaTime)
         {
-            if(_game.type == FrameSyncGameType.Online && _game.gameState == FrameSyncGameState.Running)
+            _stopwatch.Stop();
+            double elapsed = _stopwatch.Elapsed.TotalSeconds;
+            _stopwatch.Restart();
+
+            if (_game.type == FrameSyncGameType.Online && _game.gameState == FrameSyncGameState.Running)
             {
                 _inputSampleTimer += deltaTime;
-                if(_game.clientSidePrediction)
+                int serverPlayerFrameCount = PlayerFrameCountOnServer;
+                int localServerFrameCount = LocalServerFrameCount;
+
+                bool adjusted = false;
+
+                if (_game.clientSidePrediction)
                 {
-                    bool adjusted = FrameSyncTime.Adjust(_predictionError, deltaTime);
-                    return adjusted;
+                    FrameSyncTime.DoFixedTickIfNecessary((float)elapsed, serverPlayerFrameCount, () =>
+                    {
+                        if(_localCounter == 0)
+                        {
+                            _stopwatch1.Start();
+                        }
+                        _localCounter++;
+                        SWConsole.Debug($"=====[OnUpdate] serverPlayerFrameCount={serverPlayerFrameCount} local={_localCounter} server={_lastReceivedInputFrameDeltaNumber}=====");
+                        FlushInputOnlinePrediction();
+                        RunningOnlineWithPrediction();
+
+                        if(_localCounter == 900)
+                        {
+                            _stopwatch1.Stop();
+                            double elapsed1 = _stopwatch1.Elapsed.TotalSeconds;
+                            //SWConsole.Error($"elapsed={elapsed1}");
+                        }
+                    });
                 }
                 else
                 {
-                    int serverPlayerFrameCount = PlayerFrameCountOnServer;
-                    int localServerFrameCount = LocalServerFrameCount;
-
-                    bool adjusted = FrameSyncTime.Adjust(serverPlayerFrameCount, localServerFrameCount, deltaTime);
+                    adjusted = FrameSyncTime.Adjust(serverPlayerFrameCount, localServerFrameCount, deltaTime);
 
                     if (_inputSampleTimer > FrameSyncTime.internalInputSampleInterval)
                     {
                         _inputSampleTimer = 0;
+
                         FlushInputOnline();
                     }
-
-                    return adjusted;
                 }
+
+                return adjusted;
             }
 
             return false;
@@ -193,7 +227,7 @@ namespace SWNetwork.FrameSync
                                 }
                                 else
                                 {
-                                    RunningOnlineWithPrediction();
+                                    //RunningOnlineWithPrediction();
                                 }
                             }
                             break;
@@ -212,7 +246,7 @@ namespace SWNetwork.FrameSync
 
                 _currentInputFrameNumber = 1;
 
-                InitializeFrames(FrameSyncConstant.DEFAULT_FRAMES_CHUNK_SIZE, 0);
+                InitializeFrames(0);
                 SetSaveHandler(0);
                 //create an empty input frame to start with
                 //input frame delta will be created in the next FlushInput 
@@ -232,14 +266,12 @@ namespace SWNetwork.FrameSync
             _saveHandler = handler;
         }
 
-        void InitializeFrames(int chunkSize, int startIndex)
+        void InitializeFrames(int startIndex)
         {
-            inputFrameDeltas = new PersistentArray<InputFrameDelta>(chunkSize, startIndex);
-            predictionInputFrameDeltas = new PersistentArray<InputFrameDelta>(chunkSize, startIndex);
-            correctPredictionInputFrameDeltas = new PersistentArray<InputFrameDelta>(chunkSize, startIndex);
-            inputFrames = new PersistentArray<InputFrame>(chunkSize, startIndex);
-            systemDataFrames = new PersistentArray<SWSystemDataFrame>(chunkSize, startIndex);
-            localInputFrameDeltas = new PersistentArray<InputFrameDelta>(chunkSize, 0);
+            inputFrameDeltas = new PersistentArray<InputFrameDelta>(FrameSyncConstant.DEFAULT_FRAMES_CHUNK_SIZE, startIndex);
+            inputFrames = new PersistentArray<InputFrame>(FrameSyncConstant.DEFAULT_FRAMES_CHUNK_SIZE, startIndex);
+            systemDataFrames = new PersistentArray<SWSystemDataFrame>(FrameSyncConstant.DEFAULT_SYSTEM_DATA_CHUNK_SIZE, startIndex);
+            localInputFrameDeltas = new PersistentArray<InputFrameDelta>(FrameSyncConstant.DEFAULT_FRAMES_CHUNK_SIZE, 0);
         }
 
         void SetSaveHandler(int skipSaveIndex)
@@ -320,24 +352,10 @@ namespace SWNetwork.FrameSync
                     delta.Apply(_input, inputFrame1, inputFrame2);
 
                     FrameSyncUpdateType updateType = FrameSyncUpdateType.Restore;
-
-                    //Input manager facing frame data
-                    _currentInputFrame = inputFrame2;
-                    //user facing frame number
-                    _game.frameNumber = frameNumber;
-
                     SWConsole.Crit($"WaitingForInitialSystemData simulate {frameNumber}");
 
-                    foreach (SWFrameSyncSystem system in _systems)
-                    {
-                        system.WillUpdate();
-                    }
-
-                    foreach (SWFrameSyncSystem system in _systems)
-                    {
-                        system.Update(_game, _input, updateType);
-                    }
-
+                    DoSimulate(updateType, inputFrame2, frameNumber);
+                   
                     InputFrame temp = inputFrame1;
                     inputFrame1 = inputFrame2;
                     inputFrame2 = temp;
@@ -368,8 +386,9 @@ namespace SWNetwork.FrameSync
         {
             FlushInputOffline();
 
-            if (Simulation())
+            if(CanSimulateInputFrame(_currentInputFrameNumber + 1))
             {
+                SimulateInputFrame(_currentInputFrameNumber + 1);
                 ExportSimulationResult();
             }
         }
@@ -377,55 +396,108 @@ namespace SWNetwork.FrameSync
         void RunningOnline()
         {
             SWConsole.Info($"Engine: ================RunningOnline {_currentInputFrameNumber + 1}=================");
-            if (Simulation())
+            
+            if (CanSimulateInputFrame(_currentInputFrameNumber + 1))
             {
+                SimulateInputFrame(_currentInputFrameNumber + 1);
                 ExportSimulationResult();
             }
+
             SWConsole.Info("Engine: ================end=================");
         }
 
+        int _nextPlayerFrameNumberToConfirm = 0;
+
         void RunningOnlineWithPrediction()
         {
-            SWConsole.Info("Engine: ================RunningOnlineWithPrediction=================");
-            RestoreToConfirmedFrame();
+            SWConsole.Crit("Engine: ================RunningOnlineWithPrediction=================");
+            //FlushInputOnlinePrediction();
 
-            if (_predictInputFrameDeltaNumber == 0)
-            {
-                //initialize prediction frame number;
-                float halfRTT = _io.Ping() / 2;
-                float framesForHalfRTT = halfRTT / (float)FrameSyncTime.fixedDeltaTime;
-                int ceiling = (int)Math.Ceiling(framesForHalfRTT);
+            // check if we got new server frame to simulate
+            int nextServerFrame = _currentInputFrameNumber + 1;
 
-                _predictInputFrameDeltaNumber = _lastReceivedInputFrameDeltaNumber + ceiling + 1;
-            }
-            else
+            if ( true )//CanSimulateInputFrame(nextServerFrame))
             {
-                _predictInputFrameDeltaNumber++;
+                // restore the last simulated server frame before simulate any new server frame
+                RestoreToConfirmedFrame();
             }
 
-            FlushInputOnlinePrediction();
+            int lastSimulatedPlayerFrameNumber = 0;
 
-            int _lastPredictionFrameNumber = _predictInputFrameDeltaNumber - FrameSyncConstant.PREDICTION_GLOBAL_DEBAY_FRAMES;
-            if(_lastPredictionFrameNumber < _lastReceivedInputFrameDeltaNumber)
+            // simulate all server frames first
+            for (; nextServerFrame <= _lastReceivedInputFrameDeltaNumber + 1; nextServerFrame++)
             {
-                _lastPredictionFrameNumber = _lastReceivedInputFrameDeltaNumber;
-            }
-            SWConsole.Info($"Engine: _lastPredictionFrameNumber={_lastPredictionFrameNumber} _predictInputFrameDeltaNumber={_predictInputFrameDeltaNumber}");
-            for(int i = _currentInputFrameNumber + 1; i <= _lastPredictionFrameNumber + 1; i++)
-            {
-                //try use server frames first;
-                if(Simulation())
+                if (CanSimulateInputFrame(nextServerFrame))
                 {
+                    lastSimulatedPlayerFrameNumber = SimulateInputFrame(nextServerFrame);
+                    SWConsole.Crit($"lastSimulatedPlayerFrameNumber={lastSimulatedPlayerFrameNumber}");
+                    if (lastSimulatedPlayerFrameNumber == 0)
+                    {
+                        // local player's input frame missing for this frame
+                        if(_nextPlayerFrameNumberToConfirm > 1)
+                        {
+                            SWConsole.Warn("wtf");
+                        }
+                    }
+                    else
+                    {
+                        _nextPlayerFrameNumberToConfirm = lastSimulatedPlayerFrameNumber + 1;
+                        SWConsole.Crit($"nextPlayerFrameNumberToConfirm={_nextPlayerFrameNumberToConfirm}");
+                    }
+
                     ExportSimulationResult();
-                    continue;
                 }
                 else
                 {
-                    //use predicted frames
-                    Predict(i);
+                    break;
                 }
             }
-            SWConsole.Info("Engine: ================end=================");
+
+            // if last simulated server frame has local player's input
+            // we should simulate all player's input frames after it
+            if ( true )// lastSimulatedPlayerFrameNumber > 0)
+            {
+                InputFrame lastInputFrame = inputFrames[nextServerFrame - 1];
+                lastInputFrame.Copy(_lastInputFrameForPrediction);
+                int startPlayerFrameNumber = _nextPlayerFrameNumberToConfirm;
+
+                int endPlayerFrameNumber = _currentLocalInputFrameDeltaNumber - FrameSyncConstant.PREDICTION_GLOBAL_DEBAY_FRAMES;
+
+                int predictFrameNumber = nextServerFrame;
+
+                SWConsole.Crit($"startPlayerFrameNumber={startPlayerFrameNumber}");
+                SWConsole.Crit($"endPlayerFrameNumber={endPlayerFrameNumber}");
+                // endPlayerFrameNumber + 1 to include the endPlayerFrameNumber
+                for (int i = startPlayerFrameNumber; i < endPlayerFrameNumber + 1; i++)
+                {
+
+                    Predict(i, predictFrameNumber);
+                    predictFrameNumber++;
+                    
+                    //swap prediction InputFrames for the next prediction
+                    InputFrame temp = _lastInputFrameForPrediction;
+                    _lastInputFrameForPrediction = _inputFrameForPrediction;
+                    _inputFrameForPrediction = temp;
+                }
+            }
+
+            //reset game.frameNumber to the last confirmed frame
+            //this is for debug server
+            _game.frameNumber = _currentInputFrameNumber;
+
+            SWConsole.Crit("Engine: ================end=================");
+        }
+
+        bool CanSimulateInputFrame(int frameNumber)
+        {
+            if (frameNumber > _lastReceivedInputFrameDeltaNumber + 1)
+            {
+                return false;
+            }
+            else
+            {
+                return true;
+            }
         }
 
         void RestoreToConfirmedFrame()
@@ -435,6 +507,13 @@ namespace SWNetwork.FrameSync
             {
                 SWConsole.Crit($"Engine: RestoreToConfirmedFrame {_currentInputFrameNumber}");
                 SWSystemDataFrame systemDataFrame = systemDataFrames[_currentInputFrameNumber];
+
+                IRestorable restorable = systemDataFrame.GetUserRestorable();
+                if(restorable != null)
+                {
+                    restorable.Restore();
+                }
+
                 ReloadSystemDataSnapshot(systemDataFrame.bytes);
                 systemDataFrame.bytes.SetReadIndex(0);
             }
@@ -451,13 +530,8 @@ namespace SWNetwork.FrameSync
             }
             inputFrameDelta.frameNumber = _currentInputFrameNumber;
 
-            if (_game.type == FrameSyncGameType.Offline)
-            {
-                inputFrameDelta.isSealed = true;
-            }
-
             inputFrameDelta.ResetBytes();
-            _input.ExportInput(inputFrameDelta.bytes, true);
+            _input.ExportInput(inputFrameDelta.bytes);
         }
 
         public void FlushInputOnline()
@@ -476,7 +550,7 @@ namespace SWNetwork.FrameSync
             inputFrameDelta.frameNumber = _currentLocalInputFrameDeltaNumber;
             inputFrameDelta.resend = FrameSyncConstant.LOCAL_INPUT_FRAME_RESEND_COUNT;
             inputFrameDelta.ResetBytes();
-            _input.ExportInput(inputFrameDelta.bytes, false);
+            _input.ExportInput(inputFrameDelta.bytes);
 
             bool inputChanged = false;
             if (previousInputDelta == null)
@@ -509,7 +583,13 @@ namespace SWNetwork.FrameSync
 
             _currentLocalInputFrameDeltaNumber++;
 
+            if(_nextPlayerFrameNumberToConfirm == 0)
+            {
+                _nextPlayerFrameNumberToConfirm = _currentLocalInputFrameDeltaNumber;
+            }
+
             InputFrameDelta inputFrameDelta = localInputFrameDeltas[_currentLocalInputFrameDeltaNumber];
+
             if (inputFrameDelta == null)
             {
                 inputFrameDelta = new InputFrameDelta(_currentLocalInputFrameDeltaNumber);
@@ -519,7 +599,7 @@ namespace SWNetwork.FrameSync
             inputFrameDelta.frameNumber = _currentLocalInputFrameDeltaNumber;
             inputFrameDelta.resend = FrameSyncConstant.LOCAL_INPUT_FRAME_RESEND_COUNT;
             inputFrameDelta.ResetBytes();
-            _input.ExportInput(inputFrameDelta.bytes, false);
+            _input.ExportInput(inputFrameDelta.bytes);
 
             bool inputChanged = false;
             if (previousInputDelta == null)
@@ -532,22 +612,16 @@ namespace SWNetwork.FrameSync
                 inputChanged = !sameInput;
             }
 
-            inputFrameDelta.predictedServerFrameNumber = _predictInputFrameDeltaNumber;
-
             if (!inputChanged)
             {
-                SWConsole.Crit($"Engine: Input did NOT Change: prediction={_predictInputFrameDeltaNumber}");
+                SWConsole.Crit($"Engine: FlushInputOnlinePrediction Input did NOT Change: localFN={_currentLocalInputFrameDeltaNumber}");
                 //_currentLocalInputFrameDeltaNumber--;
                 //send an empty frame to keep the fixed delta time adjustment running
                 inputFrameDelta.ResetBytes();
-                predictionInputFrameDeltas[_predictInputFrameDeltaNumber] = inputFrameDelta;
-                correctPredictionInputFrameDeltas[_predictInputFrameDeltaNumber] = inputFrameDelta;
             }
             else
             {
-                SWConsole.Crit($"Engine: Input Changed prediction={_predictInputFrameDeltaNumber}");
-                predictionInputFrameDeltas[_predictInputFrameDeltaNumber] = inputFrameDelta;
-                correctPredictionInputFrameDeltas[_predictInputFrameDeltaNumber] = inputFrameDelta;
+                SWConsole.Crit($"Engine: FlushInputOnlinePrediction Input changed: localFN={_currentLocalInputFrameDeltaNumber}");
             }
 
             SendLocalInputs();
@@ -574,7 +648,7 @@ namespace SWNetwork.FrameSync
             {
                 InputFrameDelta inputFrameDelta = localInputFrameDeltas[i];
                 _sendLocalInputDeltaBuffer.Push(inputFrameDelta.frameNumber);
-                _sendLocalInputDeltaBuffer.Push(inputFrameDelta.predictedServerFrameNumber);
+
                 byte length = (byte)inputFrameDelta.bytes.DataLength;
                 _sendLocalInputDeltaBuffer.Push(length);
                 _sendLocalInputDeltaBuffer.PushAll(inputFrameDelta.bytes);
@@ -593,99 +667,46 @@ namespace SWNetwork.FrameSync
             }
         }
 
-        bool Simulation()
+        //must call CanSimulateInputFrame before calling simulate
+        int SimulateInputFrame(int frameNumber)
         {
-            bool simulated = false;
-            if (_game.type == FrameSyncGameType.Offline)
-            {
-                int nextFrameNumber = _currentInputFrameNumber + 1;
-                simulated = Simulate(nextFrameNumber);
-                if(simulated)
-                {
-                    _currentInputFrameNumber = nextFrameNumber;
-                }
-            }
-            else
-            {
-                int nextFrameNumber = _currentInputFrameNumber + 1;
-                simulated = Simulate(nextFrameNumber);
-                if (simulated)
-                {
-                    _currentInputFrameNumber = nextFrameNumber;
-                }
-            }
-
-            return simulated;
+            int playerFrameNumber = Simulate(frameNumber);
+            _currentInputFrameNumber = frameNumber;
+            return playerFrameNumber;
         }
 
+        InputFrame _lastInputFrameForPrediction;
+        InputFrame _inputFrameForPrediction;
 
-        bool Predict(int frameNumber)
+        bool Predict(int localFrameDeltaNumber, int frameNumber)
         {
-            if(frameNumber > _predictInputFrameDeltaNumber + 1)
-            {
-                return false;
-            }
+            SWConsole.Crit($"Engine: Predict localFrameDeltaNumber={localFrameDeltaNumber} frameNumber={frameNumber}");
 
-            SWConsole.Crit($"Engine: Predict frameNumber={frameNumber}");
-            InputFrame lastInputFrame = inputFrames[frameNumber - 1];
-            InputFrameDelta lastInputFrameDelta = correctPredictionInputFrameDeltas[frameNumber - 1];
-            if(lastInputFrameDelta == null)
-            {
-                //SWConsole.Crit($"Engine: Predict use empty delta");
-                lastInputFrameDelta = _EMPTY_INPUT_FRAME_DELTA;
-            }
-            InputFrame inputFrame = inputFrames[frameNumber];
+            InputFrameDelta inputFrameDelta = localInputFrameDeltas[localFrameDeltaNumber];
 
-            if (inputFrame == null)
-            {
-                inputFrame = new InputFrame(frameNumber);
-                inputFrames[frameNumber] = inputFrame;
-            }
+            _inputFrameForPrediction.FrameNumber = frameNumber;
+            _inputFrameForPrediction.ResetBytes();
 
-            inputFrame.FrameNumber = frameNumber;
-            inputFrame.ResetBytes();
+            inputFrameDelta.Apply(_input, _lastInputFrameForPrediction, _inputFrameForPrediction);
 
-            lastInputFrameDelta.Apply(_input, lastInputFrame, inputFrame);
+            _input.ApplyPredictionModifier(_inputFrameForPrediction.bytes);
 
             FrameSyncUpdateType updateType = FrameSyncUpdateType.Prediction;
 
-            //Input manager facing frame data
-            _currentInputFrame = inputFrame;
-            //user facing frame number
-            _game.frameNumber = frameNumber;
-
-            //hook for other extermal systems
-            //physics engine
-            if(OnEngineWillSimulateEvent != null)
-            {
-                OnEngineWillSimulateEvent();
-            }
-
-            foreach (SWFrameSyncSystem system in _systems)
-            {
-                system.WillUpdate();
-            }
-
-            foreach (SWFrameSyncSystem system in _systems)
-            {
-                system.Update(_game, _input, updateType);
-            }
+            DoSimulate(updateType, _inputFrameForPrediction, frameNumber);
 
             return true;
         }
 
-        bool Simulate(int frameNumber)
+        int Simulate(int frameNumber)
         {
-            if(frameNumber > _lastReceivedInputFrameDeltaNumber + 1)
-            {
-                return false;
-            }
-
-            SWConsole.Info($"Engine: Simulate frameNumber={frameNumber}");
+            SWConsole.Crit($"Engine: Simulate frameNumber={frameNumber}");
 
             InputFrame lastInputFrame = inputFrames[frameNumber - 1];
 
             InputFrameDelta lastInputFrameDelta = inputFrameDeltas[frameNumber - 1];
+
+            int playerFrameNumber = lastInputFrameDelta.playerFrameNumber;
 
             InputFrame inputFrame = inputFrames[frameNumber];
 
@@ -707,6 +728,13 @@ namespace SWNetwork.FrameSync
 
             FrameSyncUpdateType updateType = FrameSyncUpdateType.Normal;
 
+            DoSimulate(updateType, inputFrame, frameNumber);
+
+            return playerFrameNumber;
+        }  
+
+        void DoSimulate(FrameSyncUpdateType updateType, InputFrame inputFrame, int frameNumber)
+        {
             //Input manager facing frame data
             _currentInputFrame = inputFrame;
             //user facing frame number
@@ -731,9 +759,7 @@ namespace SWNetwork.FrameSync
             {
                 system.Update(_game, _input, updateType);
             }
-
-            return true;
-        }  
+        }
 
         void ExportSimulationResult()
         {
@@ -743,8 +769,15 @@ namespace SWNetwork.FrameSync
                 systemDataFrame = new SWSystemDataFrame(_currentInputFrameNumber);
                 systemDataFrames[_currentInputFrameNumber] = systemDataFrame;
             }
+
             systemDataFrame.FrameNumber = _currentInputFrameNumber;
-            systemDataFrame.ResetBytes();
+            systemDataFrame.Reset();
+
+            if (OnEngineWillExportEvent != null)
+            {
+                IRestorable restorable = OnEngineWillExportEvent(_currentInputFrameNumber);
+                systemDataFrame.SetUserRestorable(restorable);
+            }
 
             TakeSystemDataSnapshot(systemDataFrame.bytes);
         }
@@ -791,14 +824,13 @@ namespace SWNetwork.FrameSync
 
         //ISWFrameSyncHandler
         int _playerFrameCountOnServer = 0;
-        int _predictionError = 0;
         int _firstFrameReceived = 0;
 
-        public void HandleInputFrameInBackground(SWBytes inputFrame, int playerFrameCountOnServer, int roomStep, int predictFrameNumber, int correctFrameNumber)
+        public void HandleInputFrameInBackground(SWBytes inputFrame, int playerFrameCountOnServer, int roomStep, int playerFrameNumber)
         {
             lock (FRAME_SYNC_LOCK)
             {
-                SWConsole.Crit($"Engine: HandleInputFrameInBackground roomStep={roomStep} playerFrameCountOnServer={playerFrameCountOnServer} correctFrameNumber={correctFrameNumber} predictFrameNumber={predictFrameNumber}");
+                SWConsole.Crit($"<<<======Engine: HandleInputFrameInBackground roomStep={roomStep} playerFrameCountOnServer={playerFrameCountOnServer} playerFrameNumber={playerFrameNumber}");
 
                 if (_game.gameState == FrameSyncGameState.Stopped)
                 {
@@ -807,69 +839,6 @@ namespace SWNetwork.FrameSync
                 }
 
                 _playerFrameCountOnServer = playerFrameCountOnServer;
-                _predictionError = correctFrameNumber - predictFrameNumber;
-                if(_predictionError > 0)
-                {
-                    try
-                    {
-                        //check if the error has been corrected
-                        InputFrameDelta corrected = correctPredictionInputFrameDeltas[correctFrameNumber];
-                        if (corrected != null && corrected.predictedServerFrameNumber == predictFrameNumber)
-                        {
-                            SWConsole.Info($"Engine: already corrected correctFrameNumber={correctFrameNumber}");
-                        }
-                        else
-                        {
-                            for (int i = predictFrameNumber; i < correctFrameNumber; i++)
-                            {
-                                correctPredictionInputFrameDeltas[i] = null;
-                            }
-
-                            int endFrameNumber = _predictInputFrameDeltaNumber + _predictionError;
-                            for (int i = correctFrameNumber; i <= endFrameNumber; i++)
-                            {
-                                InputFrameDelta predictionInputFrameDelta = predictionInputFrameDeltas[i - _predictionError];
-                                InputFrameDelta correctInputFrameDelta = correctPredictionInputFrameDeltas[i];
-
-                                if (correctInputFrameDelta == null)
-                                {
-                                    correctPredictionInputFrameDeltas[i] = predictionInputFrameDelta;
-                                }
-                                else if (correctInputFrameDelta.predictedServerFrameNumber == predictionInputFrameDelta.predictedServerFrameNumber)
-                                {
-                                    //already moved
-                                    continue;
-                                }
-                                else
-                                {
-                                    correctPredictionInputFrameDeltas[i] = predictionInputFrameDelta;
-                                }
-                            }
-
-                            int newPredictFrameDeltaNumber = _predictInputFrameDeltaNumber + _predictionError;
-
-                            for (int i = _predictInputFrameDeltaNumber + 1; i <= newPredictFrameDeltaNumber; i++)
-                            {
-                                InputFrameDelta emptyFrameDelta = predictionInputFrameDeltas[i];
-
-                                if (emptyFrameDelta == null)
-                                {
-                                    emptyFrameDelta = new InputFrameDelta(i);
-                                    predictionInputFrameDeltas[i] = emptyFrameDelta;
-                                }
-
-                                emptyFrameDelta.predictedServerFrameNumber = i;
-                                emptyFrameDelta.ResetBytes();
-                            }
-                            _predictInputFrameDeltaNumber = newPredictFrameDeltaNumber;
-                        }
-
-                    }
-                    catch(Exception e)
-                    {
-                        SWConsole.Error(e);
-                    }
-                }
 
                 if (_lastReceivedInputFrameDeltaNumber == 0)
                 {
@@ -879,10 +848,11 @@ namespace SWNetwork.FrameSync
                         startIndex = 0;
                     }
 
-                    InitializeFrames(FrameSyncConstant.DEFAULT_FRAMES_CHUNK_SIZE, startIndex);
+                    InitializeFrames(startIndex);
                     _lastReceivedInputFrameDeltaNumber = roomStep;
 
                     InputFrameDelta firstDelta = new InputFrameDelta(roomStep);
+                    firstDelta.playerFrameNumber = playerFrameNumber;
                     byte length = inputFrame.PopByte();
                     SWBytes.Copy(inputFrame, firstDelta.bytes, length);
                     inputFrameDeltas[roomStep] = firstDelta;
@@ -907,13 +877,14 @@ namespace SWNetwork.FrameSync
                 else
                 {
                     delta.frameNumber = roomStep;
+                    delta.playerFrameNumber = playerFrameNumber;
                     SWConsole.Crit($"HandleInputFrameInBackground copy roomStep={roomStep}");// bytes={inputFrame.FullString()}");
                     byte length = inputFrame.PopByte();
 
                     SWBytes.Copy(inputFrame, delta.bytes, length);
                 }
 
-                SWConsole.Crit($"Engine: HandleInputFrameInBackground roomStep={roomStep} _lastReceivedInputFrameDeltaNumber={_lastReceivedInputFrameDeltaNumber}");
+                //SWConsole.Crit($"Engine: HandleInputFrameInBackground roomStep={roomStep} _lastReceivedInputFrameDeltaNumber={_lastReceivedInputFrameDeltaNumber}");
 
                 if (roomStep == _lastReceivedInputFrameDeltaNumber + 1)
                 {
@@ -1008,11 +979,6 @@ namespace SWNetwork.FrameSync
         PersistentArray<InputFrame> inputFrames;
         PersistentArray<InputFrameDelta> inputFrameDeltas;
         PersistentArray<InputFrameDelta> localInputFrameDeltas;
-        PersistentArray<InputFrameDelta> predictionInputFrameDeltas;
-        PersistentArray<InputFrameDelta> correctPredictionInputFrameDeltas;
-
-        //
-        int _predictInputFrameDeltaNumber = 0;
 
         //
         int _lastReceivedInputFrameDeltaNumber = 0;

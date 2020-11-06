@@ -2,6 +2,7 @@
 using SWNetwork.Core;
 using System;
 using System.Collections;
+using System.ComponentModel.Design;
 
 namespace SWNetwork.FrameSync
 {
@@ -16,6 +17,11 @@ namespace SWNetwork.FrameSync
         }
 
         public virtual void InputJustCopied(BitArray bits)
+        {
+
+        }
+
+        public virtual void ApplyPredictionModifier(BitArray bit)
         {
 
         }

@@ -10,11 +10,8 @@ namespace SWNetwork.FrameSync
 
         internal int frameNumber;
 
-        internal int predictedServerFrameNumber;
+        internal int playerFrameNumber;
 
-        internal byte version;
-
-        internal bool isSealed;
         internal int resend;
 
         public static int DataSize = FrameSyncConstant.INPUT_FRAME_SIZE;
@@ -22,22 +19,18 @@ namespace SWNetwork.FrameSync
         public InputFrameDelta()
         {
             bytes = new SWBytes(FrameSyncConstant.INPUT_FRAME_SIZE);
-            version = 0;
             frameNumber = 0;
-            isSealed = false; 
         }
 
         internal InputFrameDelta(int frameNum)
         {
             bytes = new SWBytes(FrameSyncConstant.INPUT_FRAME_SIZE);
-            version = 0;
             frameNumber = frameNum;
         }
 
-        internal void ReadServerInputFrameDelta(SWBytes data, byte ver)
+        internal void ReadServerInputFrameDelta(SWBytes data)
         {
             SWBytes.Copy(data, bytes);
-            version = ver;
         }
 
         internal void ResetBytes()
@@ -62,7 +55,7 @@ namespace SWNetwork.FrameSync
             //apply delta for each player
             byte inputSize = input.Size;
 
-            //SWConsole.Crit($"ApplyDelta frameNumber={frameNumber} {bytes.FullString()}");
+            SWConsole.Crit($"ApplyDelta delta frameNumber={frameNumber} {bytes.FullString()}");
 
             while(bytes.DataLength > 0)
             {
@@ -84,8 +77,15 @@ namespace SWNetwork.FrameSync
             input.InputDeltaJustApplied(i2.bytes);
         }
 
-        internal void ApplyPrediction(FrameSyncInput input, InputFrame inputFrame)
+        internal void ApplyPrediction(FrameSyncInput input, InputFrame i1, InputFrame i2)
         {
+            //copy i1 to i2
+            SWBytes.CopyFull(i1.bytes, i2.bytes);
+
+            //let input reset
+            //important to reset triggers
+            input.InputJustCopied(i2.bytes);
+
             byte inputSize = input.Size;
 
             if (bytes.DataLength > 0)
@@ -97,13 +97,16 @@ namespace SWNetwork.FrameSync
                     byte playerID = bytes.PopByte();
                     FrameSyncPlayer player = input.GetPlayer(playerID);
                     byte offset = player.InputOffset;
-                    SWBytes.Copy(bytes, inputFrame.bytes, bytes.ReadIndex, offset, inputSize);
+                    SWBytes.Copy(bytes, i2.bytes, bytes.ReadIndex, offset, inputSize);
                     bytes.SkipRead(inputSize);
                 }
-
-                //reset read index
-                bytes.SetReadIndex(0);
             }
+
+            //reset read index
+            bytes.SetReadIndex(0);
+
+            //prepare bitarray
+            input.InputDeltaJustApplied(i2.bytes);
         }
 
         public void Export(SWBytes buffer)
