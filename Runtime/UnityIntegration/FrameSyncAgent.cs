@@ -137,7 +137,7 @@ namespace SWNetwork.FrameSync
 
         float _cachedFixedUpdateTime = 0.02f;
 
-        Fix64 _tickInterval = Fix64.FromDivision(2, 100);
+        Fix64 _tickInterval = Fix64.FromDivision(32, 1000);
 
         public void SetTickInterval(Fix64 tickInterval)
         {
