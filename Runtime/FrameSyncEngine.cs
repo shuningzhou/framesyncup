@@ -130,7 +130,7 @@ namespace SWNetwork.FrameSync
                             _stopwatch1.Start();
                         }
                         _localCounter++;
-                        SWConsole.Debug($"=====[OnUpdate] serverPlayerFrameCount={serverPlayerFrameCount} local={_localCounter} server={_lastReceivedInputFrameDeltaNumber}=====");
+                        SWConsole.Debug($"=====[OnUpdate] serverPlayerFrameCount={serverPlayerFrameCount} =====");
                         FlushInputOnlinePrediction();
                         RunningOnlineWithPrediction();
 

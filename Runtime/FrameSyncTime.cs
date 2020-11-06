@@ -61,13 +61,14 @@ namespace SWNetwork.FrameSync
         static float _lastLoopStepTime = 0;
         static float _stepInterval = 0;
         static int _currentLoopStepCount;
+        static int _previousRemainingStepCount;
 
         public static void DoFixedTickIfNecessary(float deltaTime, int serverPlayerFrameCount, Action fixedTickHandler)
         {
             _loopTime += deltaTime;
             float loopTimeElapsed = _loopTime - _lastLoopStepTime;
 
-            int loopStepCount = (int)FrameSyncConstant.OPTIMIZED_SERVER_PREDICTION_PLAYER_FRAME_COUNT - serverPlayerFrameCount + FrameSyncConstant.FIXED_TICKRATE_LOOP_STEP_COUNT;
+            int loopStepCount = (int)FrameSyncConstant.OPTIMIZED_SERVER_PREDICTION_PLAYER_FRAME_COUNT - serverPlayerFrameCount + FrameSyncConstant.FIXED_TICKRATE_LOOP_STEP_COUNT + _previousRemainingStepCount;
 
             if(loopTimeElapsed > _stepInterval)
             {
@@ -79,28 +80,29 @@ namespace SWNetwork.FrameSync
             
             if(_currentLoopStepCount >= loopStepCount)
             {
+                loopStepCount = (int)FrameSyncConstant.OPTIMIZED_SERVER_PREDICTION_PLAYER_FRAME_COUNT - serverPlayerFrameCount + FrameSyncConstant.FIXED_TICKRATE_LOOP_STEP_COUNT;
                 float newIntervale = FrameSyncConstant.FIXED_TICKRATE_LOOP_INTERVAL / (float)loopStepCount;
+                _previousRemainingStepCount = 0;
                 ResetFixedTickValues(newIntervale);
             }
             else
             {
                 float remainTime = FrameSyncConstant.FIXED_TICKRATE_LOOP_INTERVAL - _loopTime;
-                float remainSteps = loopStepCount - _currentLoopStepCount;
+                int remainSteps = loopStepCount - _currentLoopStepCount;
 
-                if (remainTime < FrameSyncConstant.FIXED_TICKRATE_DEFAULT_STEP_INTERVAL)
+                if (remainTime < 0)
                 {
                     //call all remaining steps and reset
-                    for(int i = 0; i < remainSteps; i++)
-                    {
-                        fixedTickHandler();
-                    }
-
+                    //failed to completed all the steps in the loop
+                    //add the remaining step to the next loop
+                    _previousRemainingStepCount = remainSteps;
+                    loopStepCount = (int)FrameSyncConstant.OPTIMIZED_SERVER_PREDICTION_PLAYER_FRAME_COUNT - serverPlayerFrameCount + FrameSyncConstant.FIXED_TICKRATE_LOOP_STEP_COUNT + _previousRemainingStepCount;
                     float newIntervale = FrameSyncConstant.FIXED_TICKRATE_LOOP_INTERVAL / (float)loopStepCount;
                     ResetFixedTickValues(newIntervale);
                 }
                 else
                 {
-                    _stepInterval = remainTime / remainSteps;
+                    _stepInterval = remainTime / (int)remainSteps;
                 }
             }
         }
